@@ -5,6 +5,7 @@
 //  Created by 전경안 on 02/07/2019.
 //  Copyright © 2019 전경안. All rights reserved.
 //
+// 입력받은 정수 개수만크 별을 찍는 프로그램 입니다. 줄당 5개씩
 
 #include <stdio.h>
 int input(void);//
