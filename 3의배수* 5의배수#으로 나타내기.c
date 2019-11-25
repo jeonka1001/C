@@ -4,7 +4,7 @@
 //
 //  Created by 전경안 on 10/07/2019.
 //  Copyright © 2019 전경안. All rights reserved.
-//
+//3의배수는 *. 5의배수는 # 3,5의 공배수느 숫자로 출력
 
 #include <stdio.h>
 #define x 10//행의수
