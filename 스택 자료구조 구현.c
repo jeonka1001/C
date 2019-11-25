@@ -1,12 +1,13 @@
-
+//1, 명령을 내릴 수를 입력합니다.
+//2, 명령어 숫자 형태로 입력합니다.
 #include<stdio.h>
 int command(void);
-void push(int *,int*);//추가한다
-void pop(int*,int);//지운다
+void push(int *,int*);//숫자를 추가한다
+void pop(int*,int);//숫자를 지운다
 void top(int);//가장 위에 수를 보여줌
 void empty(int);//비어있으면 1
-void size(int);
-void printstack(int*,int);
+void size(int);//자료가 몇개가 들어가있는지 알려준다
+void printstack(int*,int);//따로 추가하 기능 = 스택이 잘 작동하는지 보기 위해 추가한 기능. 
 int main(){
     int sizee,cc,stack[10000],t,i;
     sizee=0;
