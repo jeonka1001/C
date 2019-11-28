@@ -4,7 +4,7 @@
 //
 //  Created by 전경안 on 18/07/2019.
 //  Copyright © 2019 전경안. All rights reserved.
-//
+// n개의 정수(n>0)으로 이루어진 수열에 대해 서로 인접해 있는 두 수의 차가 1에서 n-1까지의 값을 모두 가지면 그 수열을 졸리 점퍼라고 한다.
 
 #include <stdio.h>
 int input(int*);
