@@ -4,7 +4,7 @@
 //
 //  Created by 전경안 on 17/07/2019.
 //  Copyright © 2019 전경안. All rights reserved.
-//
+// 중복인 숫자를 지우고 서로 다른 숫자의 개수만을 판별
 
 #include <stdio.h>
 int input(int*,int*);
