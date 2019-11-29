@@ -35,7 +35,7 @@ void sort(char(*sp)[20]){
     while(i<4){
         for(j=i+1;j<=4;j++){
             res = strcmp(*(sp+i),*(sp+j));
-            printf("[%d]\n",res);
+            //printf("[%d]\n",res); 코드가 잘 동작하는지 확인하기 위해 넣은 코드
             if(res>0){
                 strcpy(tmp,*(sp+j));
                 strcpy(*(sp+j),*(sp+i));
