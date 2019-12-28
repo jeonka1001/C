@@ -1,6 +1,6 @@
 //
 //  main.c
-//  제곱수 구하기
+//  제곱수 구하기
 //
 //  Created by 전경안 on 2019/12/28.
 //  Copyright © 2019 전경안. All rights reserved.
