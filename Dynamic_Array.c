@@ -1,8 +1,8 @@
 //
-//  F.c
-//  Day_0527
+//  2.c
+//  Day_0528
 //
-//  Created by 전경안 on 2020/05/27.
+//  Created by 전경안 on 2020/05/28.
 //  Copyright © 2020 전경안. All rights reserved.
 //
 
@@ -10,8 +10,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+// step 16. 이전 자료구조는 정수만 저장 가능하다는 단점이 있다.
+// void * type으로 변경을해야겟다.
+
+
 typedef struct Array {
-    int* contents;
+    void **contents;
     int size;
     int count;
 } Array;
@@ -23,14 +27,7 @@ Array* arrayCreate() {
         perror("arrayCreate");
         return NULL;
     }
-    int* contents = malloc(sizeof(int) * INITIAL_SIZE);
-    if (contents == NULL) {
-        perror("arrayCreate");
-        free(array);
-        return NULL;
-    }
-    array->contents = contents;
-    array->size = INITIAL_SIZE;
+    array->size = 0;
     return array;
 }
 
@@ -41,31 +38,56 @@ void arrayDestroy(Array* array) {
     free(array);
 }
 
-#define MAX_SIZE (4096)
 
-int newContents(Array *array){
-    if((array->size)+INITIAL_SIZE > MAX_SIZE || array->size+INITIAL_SIZE < array->size){
-        array->size -= INITIAL_SIZE;
-    }
-    int *newContents = realloc(array->contents,sizeof(int)*((array->size)+INITIAL_SIZE));
-    if(newContents == NULL){
-        perror("arrorAdd");
+#define MAX_SIZE    (4096)
+static int increaseSize(Array* array, int size) {
+    if(array == NULL){
+        fprintf(stderr,"increaseSize : argument is null \n");
         return -1;
     }
+    if(size <= 0){
+        fprintf(stderr,"increaseSize : size is zero or negative\n");
+        return -1;
+    }
+    if(size < array->size){
+        return 0;
+    }
+    int newSize = (array->size == 0) ? INITIAL_SIZE : array->size;
+    while(newSize <= size){
+        newSize *= 2;
+        if(newSize >= MAX_SIZE || newSize < array->size){
+            newSize = MAX_SIZE;
+        }
+    }
+    void **newContents = NULL;
+    if(array->contents == NULL){
+        newContents = malloc(sizeof(void*) * INITIAL_SIZE);    // * size);
+        if (newContents == NULL) {
+            perror("increaseSize");
+            free(array);
+        }
+    }
+    else{
+        newContents = realloc(array->contents, sizeof(void*)*newSize);
+        if(newContents == NULL){
+            perror("increaseSize");
+            return -1;
+        }
+    }
     array->contents = newContents;
-    array->size += INITIAL_SIZE;
-    
-    
+    array->size = newSize;
     return 0;
 }
 
-int arrayAdd(Array* array, int data) {
+int arrayAdd(Array* array, void* data) {
     if (array == NULL) {
         fprintf(stderr, "arrayAdd: argument is null\n");
         return -1;
     }
-    if (array->count >= array->size){
-        newContents(array);
+    
+    if (increaseSize(array, array->count + 1) == -1) {
+        fprintf(stderr, "arrayAdd: memory allocation failed\n");
+        return -1;
     }
     
     array->contents[array->count] = data;
@@ -73,45 +95,46 @@ int arrayAdd(Array* array, int data) {
     return 0;
 }
 
-void arrayDisplay(const Array* array) {
+void arrayDisplay(const Array* array, const char*(*display)(const void*)) {
+    if(array == NULL || display ==NULL ){
+        fprintf(stderr,"arrDisplay : argument is null \n");
+        return ;
+    }
+    
     system("clear");
     for (int i = 0; i < array->size; i++) {
         if (i < array->count)
-            printf("[%2d]", array->contents[i]);
+            printf("[%s]", display(array->contents[i]));
         else
             printf("[%2c]", ' ');
     }
     getchar();
 }
 
-int arraySet(Array* array, int index, int newData, int* oldData) {
-    if (array == NULL || oldData == NULL) {
+void* arraySet(Array* array, int index, void* newData) {
+    if (array == NULL) {
         fprintf(stderr, "arraySet: argument is null\n");
-        return -1;
+        return NULL;
     }
     
     if (index < 0 || index >= array->count) {
         fprintf(stderr, "arraySet: out of index\n");
-        return -1;
+        return NULL;
     }
     
-    *oldData = array->contents[index];
+    void *oldData = array->contents[index];
     array->contents[index] = newData;
-    return 0;
+    return oldData;
 }
 
-int arrayInsert(Array* array, int index, int newData) {
+int arrayInsert(Array* array, int index, void* newData) {
     if (array == NULL) {
         fprintf(stderr, "arrayInsert: argument is null\n");
         return -1;
     }
     
-    if (array->count == array->size) {
-        newContents(array);
-    }
-    
-    if (index < 0 || index >= array->count) {
-        fprintf(stderr, "arrayInsert: out of index\n");
+    if (increaseSize(array, array->count + 1) == -1) {
+        fprintf(stderr, "arrayAdd: memiry allocation failed\n");
         return -1;
     }
     
@@ -123,7 +146,6 @@ int arrayInsert(Array* array, int index, int newData) {
     return 0;
 }
 
-
 int arrayCount(const Array* array) {
     if (array == NULL) {
         fprintf(stderr, "arrayCount: argument is null\n");
@@ -132,47 +154,79 @@ int arrayCount(const Array* array) {
     return array->count;
 }
 
-int arrayGet(const Array *array,int index, int *outData){
-    if(array == NULL || outData == NULL){
+void* arrayGet(const Array* array, int index) {
+    if (array == NULL) {
         fprintf(stderr, "arrayGet: argument is null\n");
-        return -1;
+        return NULL;
     }
-    *outData = array-> contents[index];
-    return 0;
+    
+    if (index < 0 || index >= array->count) {
+        fprintf(stderr, "arrayGet: out of index\n");
+        return NULL;
+    }
+    
+    void *outData = array->contents[index];
+    return outData;
 }
 
-int arrayRemove(Array *array, int index,int *delData){
-    if(array == NULL){
+void *arrayRemove(Array* array, int index) {
+    if (array == NULL) {
         fprintf(stderr, "arrayRemove: argument is null\n");
-        return -1;
+        return NULL;
     }
-    if( array->count == 0 ){
-        fprintf(stderr, "arrayRemove: Array is Empty\n");
-        return -1;
+    
+    if (array->count == 0) {
+        fprintf(stderr, "arrayRemove: array is empty\n");
+        return NULL;
     }
-    if(index < 0 || index >= array->count){
+    
+    if (index < 0 || index >= array->count) {
         fprintf(stderr, "arrayRemove: out of index\n");
-        return -1;
+        return NULL;
     }
-    *delData = array->contents[index];
-    if(index != array->count-1){
-        memmove(array->contents+index, array->contents+(index+1),sizeof(int)*(array->count-(index+1)));
+    
+    int* outData = array->contents[index];
+    
+    int newCount = array->count - 1;
+    if (index != newCount) {
+        memmove(array->contents + index, array->contents + index + 1,
+                sizeof(void*) * (newCount - index));
     }
-    array->count--;
-    return 0;
+    
+    array->count = newCount;
+    return outData;
 }
+
+// 위 코드느느 라이브러리 설계자가 구현하는 코드입니다.
+//-----------------------------------------------------------------------------
+// 아래 코드는 사용자가 구현하는 코드 입니다.
+typedef struct {
+    char name[32];
+    int age;
+}Person;
+
+const char* toPerson(const void* data){
+    static char buf[32]; // toPerson 에서만 호출 가능한 전역 객체화 하는것.
+    const Person *p = (const Person*)data;
+    sprintf(buf,"%s(%d)",p->name,p->age); // 첫번째 인자로 전달된 char[] 로 뒤에 파싱된 문자열들을 보난다.
+    return (const char*) buf;
+}
+
 int main() {
+    Person people[5] = {
+        {"daniel",20}, {"susan",30}, {"pororo", 40}, {"eddy", 50}, {"poby",60}
+    };
+    
     Array* arr = arrayCreate();
-    //--------------------------
-    arrayDisplay(arr);
-    for (int i = 0; i < 20; i++){
-        arrayAdd(arr, i + 1);
-        arrayDisplay(arr);
+    arrayDisplay(arr, toPerson);
+    for (int i = 0; i < 4; i++) {
+        arrayAdd(arr, people + i);
+        arrayDisplay(arr, toPerson);
     }
-    arrayInsert(arr, 3, 9999);
-    arrayDisplay(arr);
-    arrayInsert(arr, 0, 0);
-    arrayDisplay(arr);
+    
+    arrayInsert(arr, 0, people + 4);
+    arrayDisplay(arr, toPerson);
+    
     arrayDestroy(arr);
 }
 
