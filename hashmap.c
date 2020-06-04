@@ -6,194 +6,289 @@
 //  Copyright © 2020 전경안. All rights reserved.
 //
 
+
 #define _CRT_SECURE_NO_WARNINGS
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-#define KEY_LEN_MAX        (32)
-#define VALUE_LEN_MAX    (92)
-typedef struct HashData {
-    char key[KEY_LEN_MAX];
-    char value[VALUE_LEN_MAX];
-} HashData;
+typedef struct Node {
+    void* key;
+    void* value;
+    int hash;
+    struct Node* next;
+} Node;
 
+typedef int(*HashFn)(void* key);
+typedef int(*EqualsFn)(void* key1, void* key2);
 typedef struct Hashmap {
+    Node** buckets;
+    size_t bucketSize;
     size_t count;
-    size_t capacity;
-    size_t offsets[];
+    HashFn hash;
+    EqualsFn equlas;
 } Hashmap;
 
-Hashmap* hashmapCreate(size_t nData) {
-    if (nData == 0) {
-        fprintf(stderr, "hashmapCreate: argument is zero\n");
+#define DEFALUT_BUCKET_SIZE        (1)
+
+Hashmap* hashmapCreate(HashFn hash, EqualsFn equals) {
+    if (hash == NULL || equals == NULL) {
+        fprintf(stderr, "hashmapCreate: argument is null\n");
         return NULL;
     }
     
-    size_t mapSize = sizeof(Hashmap) + (sizeof(size_t) * nData) + (sizeof(HashData) * nData);
-    Hashmap* map = calloc(1, mapSize);
+    Hashmap* map = calloc(1, sizeof(Hashmap));
     if (map == NULL) {
         perror("hashmapCreate");
         return NULL;
     }
-    map->capacity = nData;
+    
+    Node** buckets = calloc(DEFALUT_BUCKET_SIZE, sizeof(Node*));
+    if (buckets == NULL) {
+        perror("hashmapCreate");
+        free(map);
+        return NULL;
+    }
+    
+    map->buckets = buckets;
+    map->bucketSize = DEFALUT_BUCKET_SIZE;
+    map->hash = hash;
+    map->equlas = equals;
+    
     return map;
 }
 
 void hashmapDestroy(Hashmap* map) {
     if (map == NULL)
         return;
+    free(map->buckets);
     free(map);
 }
 
-#define GET_KEY_LENGTH(x)    ((x) >> 24)
-#define GET_HASH_DATA(start, offset)    \
-(HashData*)((char*)start + ((offset) & 0xFFFFFF))
-static HashData* findHashData(Hashmap* map, const char* key) {
-    if (map == NULL || key == NULL) {
-        fprintf(stderr, "findHashData: argument is null\n");
+static int hashKey(Hashmap* map, void* key) {
+    int h = map->hash(key);
+    h += ~(h << 9);
+    h ^= (((unsigned int)h) >> 14);
+    h += (h << 4);
+    h ^= (((unsigned int)h) >> 10);
+    return h;
+}
+
+static size_t calculateIndex(size_t bucketSize, int hash) {
+    return ((size_t)hash) & (bucketSize - 1);
+}
+
+static Node* createNode(void* key, int hash, void* value) {
+    Node* node = calloc(1, sizeof(Node));
+    if (node == NULL) {
+        perror("createNode");
         return NULL;
     }
-    
-    size_t* offsets = map->offsets;
-    size_t keyLen = strlen(key);
-    
-    size_t count = map->count;
-    while (count--) {
-        size_t offset = *offsets++;
-        if (GET_KEY_LENGTH(offset) != keyLen)
-            continue;
-        
-        HashData* data = GET_HASH_DATA(map, offset);
-        if (memcmp(key, data->key, keyLen + 1))
-            continue;
-        return data;
-    }
-    return NULL;
+    node->key = key;
+    node->value = value;
+    node->hash = hash;
+    return node;
 }
 
-int hashmapPut(Hashmap* map, const char* key, const char* value) {
+static int equalsKey(void* key1, int hash1, void* key2, int hash2, EqualsFn equals) {
+    if (key1 == NULL || key2 == NULL || equals == NULL)
+        return 0;
+    
+    if (key1 == key2)
+        return 1;
+    if (hash1 != hash2)
+        return 0;
+    return equals(key1, key2);
+}
+static int rehashing(Hashmap *map){
+    if(map == NULL){
+        fprintf(stderr,"rehashing : argument is null\n");
+        return -1;
+    }
+    size_t newSize = map->bucketSize*2;
+    Node** temp = calloc(newSize, sizeof(Node*));
+    if(map == NULL){
+        perror("rehashing");
+        return -1;
+    }
+    for(size_t i = 0; i <map->bucketSize; i++)
+    {
+        Node *cur = map->buckets[i];
+        while(cur != NULL){
+            Node* next = cur->next;
+            size_t index = calculateIndex(map->bucketSize*2, cur->hash);
+            cur->next = temp[index]; // add Front 방식으로 재 인덱싱 하는것이다.
+            temp[index] = cur;
+            cur = next;
+        }
+    }
+    free(map->buckets);
+    map->buckets = temp;
+    map->bucketSize = newSize;
+    return 1;
+}
+void* hashmapPut(Hashmap* map, void* key, void* value) {
     if (map == NULL || key == NULL || value == NULL) {
         fprintf(stderr, "hashmapPut: argument is null\n");
-        return -1;
+        return NULL;
     }
+    if((map->count)>=(map->bucketSize*3/4)){
+        rehashing(map);
+        if(!map){
+            fprintf(stderr,"hashmapPut : rehashing is failed\n");
+            return NULL;
+        }
+    }
+    printf("size : %d",map->bucketSize);
+    int hash = hashKey(map, key);
+    size_t index = calculateIndex(map->bucketSize, hash);
     
-    int keyLen = strlen(key);
-    int valLen = strlen(value);
-    if (keyLen >= KEY_LEN_MAX || valLen >= VALUE_LEN_MAX) {
-        fprintf(stderr, "hashmapPut: key or value too long\n");
-        return -1;
-    }
-    
-    if (keyLen == 0) {
-        fprintf(stderr, "hashmapPut: key is null-string\n");
-        return -1;
-    }
-    
-    HashData* data = findHashData(map, key);
-    if (data != NULL) {
-        memcpy(data->value, value, valLen + 1);
-    }
-    else {
-        if (map->count == map->capacity) {
-            fprintf(stderr, "hashmapPut: hashmap is full\n");
-            return -1;
+    Node** ptr = &(map->buckets[index]);
+    while (1) {
+        Node* cur = *ptr;
+        if (cur == NULL) {
+            Node* node = createNode(key, hash, value);
+            if (node == NULL) {
+                fprintf(stderr, "hashmapPut: createNode error\n");
+                return NULL;
+            }
+            
+            *ptr = node;
+            map->count++;
+            return NULL;
         }
         
-        size_t hashDataStart = sizeof(Hashmap) + (sizeof(size_t) * map->capacity);
-        HashData* hashData = (HashData*)((char*)map + hashDataStart);
-        memcpy(hashData[map->count].key, key, keyLen + 1);
-        memcpy(hashData[map->count].value, value, valLen + 1);
-        
-        map->offsets[map->count] = (keyLen << 24) | ((size_t)(hashData + map->count) - (size_t)map);
-        ++map->count;
+        if (equalsKey(cur->key, cur->hash, key, hash, map->equlas) == 1) {
+            void* oldValue = cur->value;
+            cur->value = value;
+            return oldValue;
+        }
+        ptr = &(cur->next);
     }
-    return 0;
 }
 
-const char* hashmapGet(Hashmap* map, const char* key) {
+void hashmapDisplay(const Hashmap* map, const char* (*toString)(void*)) {
+    if (map == NULL || toString == NULL)
+        return;
+    system("clear");    // system("clear");
+    
+    size_t bucketSize = map->bucketSize;
+    for (size_t i = 0; i < bucketSize; i++) {
+        printf("bucket[%2d]", i);
+        
+        for (Node* p = map->buckets[i]; p != NULL; p = p->next)
+            printf("->[%s]", toString(p->value));
+        printf("\n");
+    }
+    getchar();
+}
+
+void* hashmapGet(const Hashmap* map, void* key) {
     if (map == NULL || key == NULL) {
         fprintf(stderr, "hashmapGet: argument is null\n");
         return NULL;
     }
     
-    HashData* data = findHashData(map, key);
-    if (data == NULL) {
-        fprintf(stderr, "hashmapGet: findHashData error\n");
+    int hash = hashKey(map, key);
+    size_t index = calculateIndex(map->bucketSize, hash);
+    Node* cur = map->buckets[index];
+    while (cur != NULL) {
+        if (equalsKey(cur->key, cur->hash, key, hash, map->equlas) == 1) {
+            return cur->value;
+        }
+        cur = cur->next;
+    }
+    return NULL;
+}
+
+void* hashmapRemove(Hashmap* map,void* key){
+    if(map == NULL || key == NULL){
+        fprintf(stderr,"hashmapRemove : argument is null \n");
         return NULL;
     }
-    return data->value;
+    int hash = hashKey(map, key);
+    size_t index = calculateIndex(map->bucketSize, hash);
+    Node **prev = &(map->buckets[index]);
+    
+    while (*prev != NULL) {
+        if (equalsKey((*prev)->key, (*prev)->hash, key, hash, map->equlas) == 1) {
+            void* outData = (*prev)->value;
+            Node *cur = *prev;
+            *prev = cur->next;
+            free(cur);
+            --map->count;
+            return outData;
+        }
+        *prev = (*prev)->next;
+    }
+    return NULL;
+}
+int hashmapForEach(Hashmap* map,void(*userFun)(void*,void*)){
+    if(map == NULL || userFun == NULL){
+        fprintf(stderr,"hashmapForEach : argument is NULL\n");
+        return -1;
+    }
+    for(int i = 0 ; i < map->bucketSize ; i ++){
+        Node* node = map->buckets[i];
+        while(node!=NULL){
+            userFun(node->key,node->value);
+            node=node->next;
+        }
+    }
+    return 1;
 }
 
-static int getIndex(Hashmap* map, const char* key) {
-    if (map == NULL || key == NULL) {
-        fprintf(stderr, "getIndex: argument is null\n");
-        return -1;
-    }
-    
-    size_t* offsets = map->offsets;
-    size_t keyLen = strlen(key);
-    
-    for (size_t i = 0; i < map->count; i++) {
-        if (GET_KEY_LENGTH(offsets[i]) != keyLen)
-            continue;
-        
-        HashData* data = GET_HASH_DATA(map, offsets[i]);
-        if (memcmp(key, data->key, keyLen + 1))
-            continue;
-        return i;
-    }
-    return -1;
+// 위 코드는 라이브러리 설계자가 제공하는 코드입니다.
+// ----------------------------------------------------------------------------------
+// 아래의 코드는 사용자가 구현하는 코드입니다.
+
+typedef struct {
+    char name[32];
+    int age;
+} Person;
+
+int myHash(void* key) {
+    return strlen((const char*)key);
 }
 
+int myEquals(void* key1, void* key2) {
+    if (key1 == NULL || key2 == NULL)
+        return 0;
+    return strcmp((const char*)key1, (const char*)key2) == 0;
+}
 
-int hashmapDelete(Hashmap* map, const char* key) {
-    if (map == NULL || key == NULL) {
-        fprintf(stderr, "hashmapDelete: argument is null\n");
-        return -1;
+const char* myToString(void* p) {
+    static char buf[1024];
+    Person* person = p;
+    sprintf(buf, "%s(%d)", person->name, person->age);
+    return buf;
+}
+
+void increaseAge(void* key, void *value){
+    if(key == NULL || value == NULL){
+        return ;
     }
-    
-    int index = getIndex(map, key);
-    printf("%d",index);
-    if (index < 0) {
-        fprintf(stderr, "hashmapDelete: getIndex error\n");
-        return -1;
-    }
-    
-    if(index != (map->count)-1){
-        size_t _data = (map->offsets[(map->count)-1]) & 0x00FFFFFF;
-        size_t _del = (map->offsets[index]) & 0x00FFFFFF;
-        HashData* data = (HashData*)((char*)map + _data);
-        HashData* del = (HashData*)((char*)map + _del);
-        *del = *data;
-        map->offsets[index] = (map->offsets[(map->count)-1] & 0xFF000000) | (map->offsets[index] & 0x00FFFFFF) ; //  hash는 선형 자료구조가 아니기 때문에 당겨놓지않아도 상관없다.
-        
-    }
-    --map->count;
-    // 마지막 원소를 지워진 부분으로 채워준다.
-    return 0;
+    Person*p = value;
+    ++p->age;
 }
 
 int main() {
-    char* key[5] = { "apple", "banana", "cherry", "orange","dydrhk" };
-    char* value[5] = { "사과", "바나나", "체리", "오렌지","용과" };
-    
-    Hashmap* map = hashmapCreate(100);
-    for (int i = 0; i < 4; i++)
-        hashmapPut(map, key[i], value[i]);
-    
-    // 아래의 함수를 구현해 보세요 :D
-    hashmapDelete(map, "cherry");
-    for (int i = 0; i < 4; i++) {
-        const char* v = hashmapGet(map, key[i]);
-        if (v)
-            printf("key: %s, value: %s\n", key[i], v);
+    Person people[4] = {
+        {"daniel", 20}, {"susan", 30}, {"petty", 40}, {"eddy", 50}
+    };
+    Hashmap* map = hashmapCreate(myHash, myEquals);
+    for (int i = 0; i < 4; i++){
+        hashmapPut(map, people[i].name, &people[i]);
+        hashmapDisplay(map, myToString);
     }
-    hashmapPut(map, key[4], value[4]);
-    for (int i = 0; i < 5; i++) {
-        const char* v = hashmapGet(map, key[i]);
-        if (v)
-            printf("key: %s, value: %s\n", key[i], v);
-    }
+    
+    
+    // 해시 맵에 저장된 사람 데이터에 대하여 나이를 1씩 증가!
+    hashmapForEach(map,increaseAge);
+    hashmapDisplay(map, myToString);
+    
     hashmapDestroy(map);
+    return 0;
 }
+
+
